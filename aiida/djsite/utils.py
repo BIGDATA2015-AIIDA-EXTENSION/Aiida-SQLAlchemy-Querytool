@@ -18,17 +18,17 @@ def load_dbenv(process=None,profile=None):
 def _load_dbenv_noschemacheck(process,profile=None):
     """
     Load the database environment (Django) WITHOUT CHECKING THE SCHEMA VERSION.
-    
+
     :param process: ...
-    
-    This should ONLY be used internally, inside load_dbenv, and for schema 
+
+    This should ONLY be used internally, inside load_dbenv, and for schema
     migrations. DO NOT USE OTHERWISE!
     """
     import os
     import django
     from aiida.common.setup import get_default_profile,DEFAULT_PROCESS
     from aiida.djsite.settings import settings_profile
-    
+
     if profile is not None and process is not None:
         raise TypeError("You have to pass either process or profile to "
                          "load_dbenv_noschemacheck")
@@ -39,18 +39,18 @@ def _load_dbenv_noschemacheck(process,profile=None):
         actual_process = process if process is not None else DEFAULT_PROCESS
         settings_profile.AIIDADB_PROFILE = get_default_profile(actual_process)
         settings_profile.CURRENT_AIIDADB_PROCESS = actual_process
-        
+
     os.environ['DJANGO_SETTINGS_MODULE'] = 'aiida.djsite.settings.settings'
     django.setup()
-    
+
 class DBLogHandler(logging.Handler):
     def emit(self, record):
-        from django.core.exceptions import ImproperlyConfigured 
+        from django.core.exceptions import ImproperlyConfigured
         try:
             from aiida.djsite.db.models import DbLog
-            
+
             DbLog.add_from_logrecord(record)
-            
+
         except ImproperlyConfigured:
             # Probably, the logger was called without the
             # Django settings module loaded. Then,
@@ -60,7 +60,7 @@ class DBLogHandler(logging.Handler):
             # To avoid loops with the error handler, I just print.
             # Hopefully, though, this should not happen!
             import traceback
-            traceback.print_exc() 
+            traceback.print_exc()
 
 def get_dblogger_extra(obj):
     """
@@ -69,7 +69,7 @@ def get_dblogger_extra(obj):
     If no such extra is passed, the exception is only logged on file.
     """
     from aiida.orm import Node
-    
+
     if isinstance(obj, Node):
         if obj._plugin_type_string:
             objname = "node." + obj._plugin_type_string
@@ -83,7 +83,7 @@ def get_dblogger_extra(obj):
 def get_log_messages(obj):
     from aiida.djsite.db.models import DbLog
     import json
-    
+
     extra = get_dblogger_extra(obj)
     # convert to list, too
     log_messages = list(DbLog.objects.filter(**extra).order_by('time').values(
@@ -97,13 +97,13 @@ def get_log_messages(obj):
 
 def get_configured_user_email():
     """
-    Return the email (that is used as the username) configured during the 
+    Return the email (that is used as the username) configured during the
     first verdi install.
     """
     from aiida.common.exceptions import ConfigurationError
     from aiida.common.setup import get_profile_config, DEFAULT_USER_CONFIG_FIELD
-    from aiida.djsite.settings import settings_profile 
-    
+    from aiida.djsite.settings import settings_profile
+
     try:
         profile_conf = get_profile_config(settings_profile.AIIDADB_PROFILE)
         email = profile_conf[DEFAULT_USER_CONFIG_FIELD]
@@ -122,8 +122,8 @@ def get_daemon_user():
     """
     from aiida.common.globalsettings import get_global_setting
     from aiida.common.setup import DEFAULT_AIIDA_USER
-    
-    try: 
+
+    try:
         return get_global_setting('daemon|user')
     except KeyError:
         return DEFAULT_AIIDA_USER
@@ -133,19 +133,19 @@ def set_daemon_user(user_email):
     Set the username (email) of the user that is allowed to run the daemon.
     """
     from aiida.common.globalsettings import set_global_setting
-    
+
     set_global_setting('daemon|user', user_email,
                        description="The only user that is allowed to run the "
                                     "AiiDA daemon on this DB instance")
 
 _aiida_autouser_cache = None
-    
+
 def get_automatic_user():
     """
     Return the default user for this installation of AiiDA.
     """
     global _aiida_autouser_cache
-    
+
     if _aiida_autouser_cache is not None:
         return _aiida_autouser_cache
 
@@ -154,7 +154,7 @@ def get_automatic_user():
     from aiida.common.exceptions import ConfigurationError
 
     email = get_configured_user_email()
-        
+
     try:
         _aiida_autouser_cache = DbUser.objects.get(email=email)
         return _aiida_autouser_cache
@@ -167,10 +167,10 @@ def long_field_length():
     Return the length of "long" fields.
     This is used, for instance, for the 'key' field of attributes.
     This returns 1024 typically, but it returns 255 if the backend is mysql.
-    
+
     :note: Call this function only AFTER having called load_dbenv!
     """
-    # One should not load directly settings because there are checks inside 
+    # One should not load directly settings because there are checks inside
     # for the current profile. However, this function is going to be called
     # only after having loaded load_dbenv, so there should be no problem
     from django.conf import settings
@@ -185,7 +185,7 @@ def get_db_schema_version():
     it is not stored.
     """
     from aiida.common.globalsettings import get_global_setting
-    
+
     try:
         return get_global_setting('db|schemaversion')
     except KeyError:
@@ -197,7 +197,7 @@ def set_db_schema_version(version):
     you are doing.
     """
     from aiida.common.globalsettings import set_global_setting
-    
+
     return set_global_setting('db|schemaversion', version, description=
                               "The version of the schema used in this "
                               "database.")
@@ -206,15 +206,15 @@ def check_schema_version():
     """
     Check if the version stored in the database is the same of the version
     of the code.
-    
+
     :note: if the DbSetting table does not exist, this function does not
       fail. The reason is to avoid to have problems before running the first
       migrate call.
-      
+
     :note: if no version is found, the version is set to the version of the
       code. This is useful to have the code automatically set the DB version
       at the first code execution.
-    
+
     :raise ConfigurationError: if the two schema versions do not match.
       Otherwise, just return.
     """
@@ -225,19 +225,19 @@ def check_schema_version():
     # Do not do anything if the table does not exist yet
     if 'db_dbsetting' not in connection.introspection.table_names():
         return
-    
+
     code_schema_version = aiida.djsite.db.models.SCHEMA_VERSION
     db_schema_version = get_db_schema_version()
-    
+
     if db_schema_version is None:
         # No code schema defined yet, I set it to the code version
         set_db_schema_version(code_schema_version)
         db_schema_version = get_db_schema_version()
-    
+
     if code_schema_version != db_schema_version:
         raise ConfigurationError("The code schema version is {}, but the "
             "version stored in the database (DbSetting "
             "table) is {}, I stop [migrate using tools in "
             "aiida/djsite/aiida_migrations]".format(
                                     code_schema_version, db_schema_version))
-    
+

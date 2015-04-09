@@ -3,7 +3,7 @@
 import sys, os
 from aiida.common.exceptions import ConfigurationError
 # get_property is used to read properties stored in the config json
-from aiida.common.setup import (get_config, get_secret_key, get_property, 
+from aiida.common.setup import (get_config, get_secret_key, get_property,
                                 get_profile_config, get_default_profile,
                                 parse_repository_uri)
 import aiida.common.setup
@@ -42,13 +42,13 @@ REPOSITORY_URI = profile_conf.get('AIIDADB_REPOSITORY_URI', '')
 
 DATABASES = {
     'default' : {
-        # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'. 
-        'ENGINE'    : 'django.db.backends.' + DBENGINE, 
-        'NAME'      : DBNAME,  # Or path to database file if using sqlite3.   
+        # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
+        'ENGINE'    : 'django.db.backends.' + DBENGINE,
+        'NAME'      : DBNAME,  # Or path to database file if using sqlite3.
         'USER'      : DBUSER,  # Not used with sqlite3.
         'PASSWORD'  : DBPASS,  # Not used with sqlite3.
-        'HOST'      : DBHOST,  # Set to empty string for localhost. Not used with sqlite3. 
-        'PORT'      : DBPORT,  # Set to empty string for default. Not used with sqlite3.      
+        'HOST'      : DBHOST,  # Set to empty string for localhost. Not used with sqlite3.
+        'PORT'      : DBPORT,  # Set to empty string for default. Not used with sqlite3.
         }
     }
 
@@ -89,10 +89,10 @@ AUTH_USER_MODEL = 'db.DbUser'
 # Make this unique, and don't share it with anybody.
 # This is generated with the first run of 'verdi install'
 SECRET_KEY = get_secret_key()
-        
+
 # Usual Django settings starts here.............
 
-# Keep it to False! Otherwise every query is stored 
+# Keep it to False! Otherwise every query is stored
 # in memory and looks like a memory leak with celery
 DEBUG = False
 TEMPLATE_DEBUG = DEBUG
@@ -217,7 +217,9 @@ INSTALLED_APPS = (
     # 'django.contrib.admindocs',
     'aiida.djsite.db',
     'kombu.transport.django',
+    'django_extensions',
     'djcelery',
+    'aldjemy'
 )
 
 # A sample logging configuration. The only tangible logging
@@ -327,7 +329,7 @@ djcelery_tasks = {
     }
 
 # Choose here how often the tasks should be run. Note that if the previous task
-# is still running, the new one does not start thanks to the DbLock feature 
+# is still running, the new one does not start thanks to the DbLock feature
 # that we added.
 CELERYBEAT_SCHEDULE = {
     djcelery_tasks['submitter']: {

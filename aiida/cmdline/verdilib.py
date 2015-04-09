@@ -336,6 +336,7 @@ class Run(VerdiCommand):
         from aiida.djsite.db.management.commands.customshell import default_modules_list
         import aiida.orm.autogroup
         from aiida.orm.autogroup import Autogroup
+	import time #Query timer added by Souleimane Drissi El Kamili
 
         parser = argparse.ArgumentParser(
             prog=self.get_full_command_name(),
@@ -414,7 +415,9 @@ class Run(VerdiCommand):
                     # Add local folder to sys.path
                     sys.path.insert(0, os.path.abspath(os.curdir))
                     # Pass only globals_dict
+		    start_time = time.time() #Query timer added by Souleimane Drissi El Kamili
                     exec(f,globals_dict)
+                    print("--- Script took %s seconds to execute ---" % (time.time() - start_time)) #Query timer added by Souleimane Drissi El Kamili
                 # print sys.argv
             except SystemExit as e:
                 ## Script called sys.exit()
