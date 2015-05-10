@@ -8,7 +8,6 @@ from aiida.djsite.db.models import DbNode, DbAttribute, DbUser, DbExtra, \
 from sqlalchemy import and_, or_, not_, func
 from sqlalchemy.orm.query import aliased
 from functools import partial
-from operator import is_not
 
 # This means you shouldn't import this module if Sql alchemy + aldjemy aren't
 # install, nor should you import * it.
@@ -41,11 +40,7 @@ column_to_type = {
 #   joining the output node, and then the attribute, join the link, and then
 #   directly the attribute. In fact, it might be an optimization to focus on
 #   querying attribute, and then joining the node as we want.
-#   * Currently, it uses EXIST statement to filter the attributes. This
-#   results in a twice slower performance compared to the Django's ORM. This
-#   should be investigated, as this could also be applied in others cases (each
-#   time we need to filter on several attributes). Django's ORM seems to use IN
-#   statement + a filter directly into the join.
+#   * TODO: handle extra table at numerous place.
 
 
 class QueryBuilder(object):
@@ -85,48 +80,96 @@ class QueryBuilder(object):
         q = self._build_query(self.q)
         return q.all()
 
+    def _build_relation_stmt(self, relation, filters):
+            table = self.alias[relation]
+            attr_filter = map(
+                lambda a: Attribute.query()
+                .filter(a, table.id == Attribute.dbnode_id).exists()
+                .correlate(table),
+                filters)
+
+            sub_query = table.query(table.id).filter(*attr_filter).subquery()
+
+            return table.id.in_(sub_query)
+
+    def _build_depth_filter(self, relation,  filters):
+        # Unpack (filters, min_depth, max_depth)
+        filters, min_depth, max_depth = filters
+
+        path_join, attr_join = (None, None)
+
+        if relation == "children":
+            path_join = Path.child_id == Node.id
+            attr_join = Attribute.dbnode_id = Path.parent_id
+        elif relation == "parents":
+            path_join = Path.parent_id == Node.id
+            attr_join = Attribute.dbnode_id = Path.child_id
+        else:
+            raise ValueError('Relation has to be either "children" or "parents"'
+                             + 'but it was {}.'.format(relation))
+
+        filter = Node.query(Node.id).join(Path, path_join)
+        if min_depth:
+            filter = filter.filter(Path.depth >= min_depth)
+        if max_depth:
+            filter = filter.filter(Path.depth <= max_depth)
+
+        filter = filter.join(Attribute, attr_join).filter(*filters).subquery()
+
+        return filter
+
+    def _build_prefetch(self, attrs, relation=None):
+        alias, join = (Attribute, (Attribute, ))
+
+        if relation:
+            alias = aliased(Attribute)
+            table = self.alias[relation]
+            join = (alias, alias.dbnode_id == table.id)
+
+        prefetch_keys = alias.key.in_(map(lambda a: a.key, attrs))
+        prefetch_columns = (alias.key,) + tuple(
+            set(
+                map(lambda a: getattr(alias, a.column),
+                    attrs)
+            ))
+        if relation:
+            prefetch_columns = map(lambda c: c.label(relation + c.key),
+                                   prefetch_columns)
+
+        return (join, prefetch_keys, prefetch_columns)
+
     def _build_query(self, q):
-        # Different strat if only one attribute or several. If there is only
-        # one, we can do a simple join + filter, it will work. Otherwise, we
-        # need to filter using EXIST
 
         # TODO: better than a triple length check.
         if len(self.input_attr_filters) > 0 or len(self.input_filters) > 0 or \
-            len(self.input_attr_to_prefetch) > 0:
-            # needed to form a right join at the beginning, because you can't do
+                len(self.input_attr_to_prefetch) > 0:
+            # needed to form a right join at the beginning, because you can't
+            # do
             # select_form on an already filtered/join query.
             input = self.alias["input"]
             q = q.select_from(input).join(input.outputs)
-
-        if len(self.input_filters) > 0:
-            q = q.filter(*self.input_filters)
-
-        if len(self.input_attr_filters) > 0:
-            input = self.alias["input"]
-            exists_filter = map(
-                lambda a: Attribute.query().filter(a, input.id == Attribute.dbnode_id).exists().
-                correlate(input),
-                self.input_attr_filters)
-
-            sub_q = input.query(input.id).filter(*exists_filter).subquery()
-            q = q.filter(input.id.in_(sub_q))
 
         if len(self.group_filters) > 0:
             q = q.join(Group).filters(Group.name.in_(self.group_filters))
 
         q = q.filter(*self.filters)
 
-        if len(self.attr_filters) > 0 or len(self.attr_to_prefetch) > 0:
-            q = q.join(Attribute)
-
         if len(self.attr_filters) > 0:
-            # TODO: make a function for it ? the need might arise with
-            # attribute on relationship
-            exists_filter = map(
-                lambda a: Attribute.query().filter(a, Node.id == Attribute.dbnode_id).exists().
-                correlate(Node),
-                self.attr_filters)
-            q = q.filter(*exists_filter)
+            filters = map(
+                lambda a:
+                Attribute.query(Attribute.dbnode_id).filter(a).as_scalar(),
+                self.attr_filters
+            )
+            attr_filters = and_(*map(lambda a: Node.id.in_(a), filters))
+            q = q.filter(attr_filters)
+
+        if len(self.input_filters) > 0:
+            q = q.filter(*self.input_filters)
+
+        if len(self.input_attr_filters) > 0:
+            stmt = self._build_relation_stmt("input",
+                                             self.input_attr_filters)
+            q = q.filter(stmt)
 
         if len(self.output_attr_filters) > 0 or len(self.output_filters) > 0 or \
             len(self.output_attr_to_prefetch) > 0:
@@ -136,101 +179,41 @@ class QueryBuilder(object):
             q = q.filter(*self.output_filters)
 
         if len(self.output_attr_filters) > 0:
-            output = self.alias["output"]
-            exists_filter = map(
-                lambda a: Attribute.query().filter(a, output.id == Attribute.dbnode_id).exists().
-                correlate(output),
-                self.output_attr_filters)
-
-            sub_q = output.query(output.id).filter(*exists_filter).subquery()
-            q = q.filter(output.id.in_(sub_q))
+            stmt = self._build_relation_stmt("output",
+                                             self.output_attr_filters)
+            q = q.filter(stmt)
 
         if len(self.children_attr_filters) > 0:
-            # TODO: handle multiple filters (correctly).
-            # TODO: handle extra table.
-            min_filters = map(lambda e: e[1], self.children_attr_filters)
-            min_filters = filter(partial(is_not, None), min_filters)
-            min_filters = map(lambda e: Path.depth > e, min_filters)
-
-            max_filters = map(lambda e: e[2], self.children_attr_filters)
-            max_filters = filter(partial(is_not, None), max_filters)
-            max_filters = map(lambda e: Path.depth < e, max_filters)
-
-            filters = map(lambda e:e[0], self.children_attr_filters)
-
-            stmt = Node.query(Node.id).join(Path, Path.parent_id == Node.id).\
-                filter(*min_filters).filter(*max_filters).\
-                join(Attribute, Attribute.dbnode_id == Path.child_id).\
-                filter(*filters).subquery()
-
+            stmt = self._build_depth_filter("children", self.children_attr_filters)
             q = q.filter(Node.id.in_(stmt))
 
         if len(self.parents_attr_filters) > 0:
-            min_filters = map(lambda e: e[1], self.parents_attr_filters)
-            min_filters = filter(partial(is_not, None), min_filters)
-            min_filters = map(lambda e: Path.depth > e, min_filters)
-
-            max_filters = map(lambda e: e[2], self.parents_attr_filters)
-            max_filters = filter(partial(is_not, None), max_filters)
-            max_filters = map(lambda e: Path.depth < e, max_filters)
-
-            filters = map(lambda e:e[0], self.parents_attr_filters)
-
-            stmt = Node.query(Node.id).join(Path, Path.child_id == Node.id).\
-                filter(*min_filters).filter(*max_filters).\
-                join(Attribute, Attribute.dbnode_id == Path.parent_id).\
-                filter(*filters).subquery()
-
+            stmt = self._build_depth_filter("parents", self.parents_attr_filters)
             q = q.filter(Node.id.in_(stmt))
 
         # Prefetch using a left outer join. If an attribute doesn't exist, then
         # ¯\_(ツ)_/¯
         if len(self.attr_to_prefetch) > 0:
-            prefetch_keys = map(lambda a: a.key, self.attr_to_prefetch)
-            prefetch_columns = tuple(
-                set(
-                    map(lambda a: getattr(Attribute, a.column),
-                        self.attr_to_prefetch)
-                ))
-            q = q.filter(Attribute.key.in_(prefetch_keys))
-            q = q.add_columns(
-                Attribute.key,
-                *prefetch_columns
-            )
+            join, prefetch_keys, prefetch_columns = self._build_prefetch(
+                self.attr_to_prefetch)
+            q = q.join(join)
 
-        # TODO: Right now, input/output prefetching only work if there has
-        # already been a filter (hence a join) done.
+            q = q.filter(prefetch_keys)
+            q = q.add_columns(*prefetch_columns)
+
         if len(self.input_attr_to_prefetch) > 0:
-            input_attr = aliased(Attribute)
-            q = q.outerjoin(input_attr, input_attr.dbnode_id == self.alias["input"].id)
-
-            prefetch_keys = map(lambda a: a.key, self.input_attr_to_prefetch)
-            prefetch_columns = tuple(
-                set(
-                    map(lambda a: getattr(input_attr, a.column),
-                        self.input_attr_to_prefetch)
-                ))
-            q = q.filter(input_attr.key.in_(prefetch_keys))
-            q = q.add_columns(
-                input_attr.key,
-                *prefetch_columns
-            )
+            join, prefetch_keys, prefetch_columns = self._build_prefetch(
+                self.input_attr_to_prefetch, relation="input")
+            q = q.join(join)
+            q = q.filter(prefetch_keys)
+            q = q.add_columns(*prefetch_columns)
 
         if len(self.output_attr_to_prefetch) > 0:
-            output_attr = aliased(Attribute)
-            q = q.outerjoin(output_attr, output_attr.dbnode_id == self.alias["output"].id)
-
-            prefetch_keys = map(lambda a: a.key, self.output_attr_to_prefetch)
-            prefetch_columns = tuple(
-                set(
-                    map(lambda a: getattr(output_attr, a.column),
-                        self.output_attr_to_prefetch)
-                ))
-            q = q.filter(output_attr.key.in_(prefetch_keys))
-            q = q.add_columns(
-                output_attr.key,
-                *prefetch_columns
-            )
+            join, prefetch_keys, prefetch_columns = self._build_prefetch(
+                self.output_attr_to_prefetch, relation="output")
+            q = q.join(join)
+            q = q.filter(prefetch_keys)
+            q = q.add_columns(*prefetch_columns)
 
         return q
 
@@ -335,7 +318,6 @@ class QueryBuilder(object):
         stmt = _table.id.in_(subquery.with_entities(Node.id))
         _filters.append(stmt)
 
-
     # TODO: replace extra to use the table arg
     def _attr_filter_stmt(self, _filter, extra=False):
         table = Extra if extra else Attribute
@@ -351,4 +333,3 @@ class QueryBuilder(object):
                         )
 
         return stmt
-

@@ -271,7 +271,6 @@ class QueryTool(object):
         attr_queryset = _db.objects.filter(key=attr)
 
         if relation:
-            print("prefetch relation")
             _rel_attr = "outputs" if relation == "res" or \
                 relation.startswith('out') else "inputs"
             _to_attr = _to_attr.format(relation) + "_{}".format(attr)
