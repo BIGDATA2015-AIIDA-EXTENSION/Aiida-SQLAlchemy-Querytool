@@ -5,7 +5,7 @@ __all__ = ['QueryBuilder']
 
 from aiida.djsite.db.models import DbNode, DbAttribute, DbUser, DbExtra, \
     DbGroup, DbPath
-from sqlalchemy import and_, or_, not_, func
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm.query import aliased
 from functools import partial
 
@@ -40,19 +40,15 @@ column_to_type = {
 #   joining the output node, and then the attribute, join the link, and then
 #   directly the attribute. In fact, it might be an optimization to focus on
 #   querying attribute, and then joining the node as we want.
-#   * TODO: handle extra table at numerous place.
+#   * TODO: handle Extra table.
 
 
 class QueryBuilder(object):
 
     def __init__(self):
-        self.q = Node.query(Node)
-        self.alias = {"input": aliased(Node),
-                      "output": aliased(Node),
+        self.alias = {"input": aliased(Node, name="input"),
+                      "output": aliased(Node, name="output"),
                       }
-
-        # TODO: find a better way to store the differents filters and
-        # prefetching attributes (other than a dict).
 
         self.filters = []
         self.group_filters = []
@@ -61,12 +57,12 @@ class QueryBuilder(object):
         self.attr_to_prefetch = []
         self.extra_to_prefetch = []
 
-        # TODO: refactor this.
         self.input_filters = []
         self.output_filters = []
 
         self.input_attr_filters = []
         self.output_attr_filters = []
+
         self.input_attr_to_prefetch = []
         self.output_attr_to_prefetch = []
 
@@ -74,23 +70,24 @@ class QueryBuilder(object):
         self.children_attr_filters = []
         self.parents_attr_filters = []
 
+        # Column we need to select in our query.
+        self.columns_names = []
 
     def run_query(self):
-        # _build_query is a pure function.
-        q = self._build_query(self.q)
+        q = self._build_query()
         return q.all()
 
     def _build_relation_stmt(self, relation, filters):
-            table = self.alias[relation]
-            attr_filter = map(
-                lambda a: Attribute.query()
-                .filter(a, table.id == Attribute.dbnode_id).exists()
-                .correlate(table),
-                filters)
+        table = self.alias[relation]
+        attr_filter = map(
+            lambda a: Attribute.query()
+            .filter(a, table.id == Attribute.dbnode_id).exists()
+            .correlate(table),
+            filters)
 
-            sub_query = table.query(table.id).filter(*attr_filter).subquery()
+        sub_query = table.query(table.id).filter(*attr_filter).subquery()
 
-            return table.id.in_(sub_query)
+        return table.id.in_(sub_query)
 
     def _build_depth_filter(self, relation,  filters):
         # Unpack (filters, min_depth, max_depth)
@@ -119,7 +116,7 @@ class QueryBuilder(object):
         return filter
 
     def _build_prefetch(self, attrs, relation=None):
-        alias, join = (Attribute, (Attribute, ))
+        alias, join = (Attribute, Attribute)
 
         if relation:
             alias = aliased(Attribute)
@@ -133,12 +130,18 @@ class QueryBuilder(object):
                     attrs)
             ))
         if relation:
-            prefetch_columns = map(lambda c: c.label(relation + c.key),
+            prefetch_columns = map(lambda c: c.label(relation + "_" + c.key),
                                    prefetch_columns)
+            self.columns_names += map(lambda c: relation + "_" + c.key,
+                                      prefetch_columns)
+        else:
+            self.columns_names += map(lambda c: c.key, prefetch_columns)
 
         return (join, prefetch_keys, prefetch_columns)
 
-    def _build_query(self, q):
+    def _build_query(self):
+
+        q = Node.query()
 
         # TODO: better than a triple length check.
         if len(self.input_attr_filters) > 0 or len(self.input_filters) > 0 or \
@@ -162,6 +165,14 @@ class QueryBuilder(object):
             )
             attr_filters = and_(*map(lambda a: Node.id.in_(a), filters))
             q = q.filter(attr_filters)
+
+        if len(self.attr_to_prefetch) > 0:
+            join, prefetch_keys, prefetch_columns = self._build_prefetch(
+                self.attr_to_prefetch)
+            q = q.join(join)
+
+            q = q.filter(prefetch_keys)
+            q = q.add_columns(*prefetch_columns)
 
         if len(self.input_filters) > 0:
             q = q.filter(*self.input_filters)
@@ -193,13 +204,6 @@ class QueryBuilder(object):
 
         # Prefetch using a left outer join. If an attribute doesn't exist, then
         # ¯\_(ツ)_/¯
-        if len(self.attr_to_prefetch) > 0:
-            join, prefetch_keys, prefetch_columns = self._build_prefetch(
-                self.attr_to_prefetch)
-            q = q.join(join)
-
-            q = q.filter(prefetch_keys)
-            q = q.add_columns(*prefetch_columns)
 
         if len(self.input_attr_to_prefetch) > 0:
             join, prefetch_keys, prefetch_columns = self._build_prefetch(
@@ -218,7 +222,7 @@ class QueryBuilder(object):
         return q
 
     def get_query(self):
-        return self._build_query(self.q)
+        return self._build_query()
 
     def filter_class(self, classes):
         stmt = or_(*map(lambda c: Node.type.like(c + "%"), classes))
@@ -304,16 +308,15 @@ class QueryBuilder(object):
     def prefetch_attr(self, *args, **kwargs):
         raise NotImplementedError("prefetch_attr is not implemented yet.")
 
-    def filter_relation(self, relation, subquery, rename=None):
-        _filters, _table = None, None
+    def filter_relation(self, relation, query, rename=None, prefetch=False):
+        # TODO: proper error message.
+        _table = self.alias[relation]
+        _filters = None
         if relation == "input":
-            _filters, _table = self.input_filters, self.alias["input"]
+            _filters = self.input_filters
         elif relation == "output":
-            _filters, _table = self.output_filters, self.alias["output"]
+            _filters = self.output_filters
 
-        if (_filters or _table) is None:
-            raise NotImplementedError("We don't support support relation {}.".
-                                      format(relation))
 
         stmt = _table.id.in_(subquery.with_entities(Node.id))
         _filters.append(stmt)

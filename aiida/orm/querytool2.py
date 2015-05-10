@@ -154,13 +154,16 @@ class QueryTool(object):
         check_args(args, instance=basestring, exception=True)
         extra = kwargs.pop('extra', False)
 
-    def filter_relation(self, relation, in_, rename=None):
+        raise NotImplementedError("Not implemeted yet.")
+
+    def filter_relation(self, relation, in_, rename=None, prefetch=False):
         # Only two relations supported yet.
         valid_relation = ("output", "input", "parents", "children")
         if relation not in valid_relation:
             raise ValueError("The relation must be in {}.".
                              format(" ".join(valid_relation)))
-        self.query_builder.filter_relation(relation, in_._get_query(), rename)
+        self.query_builder.filter_relation(relation, in_.query_builder, rename,
+                                           prefetch)
 
     def _get_query(self):
         return self.query_builder.get_query()
