@@ -91,27 +91,28 @@ class QueryBuilder(object):
 
     def _build_depth_filter(self, relation,  filters):
         # Unpack (filters, min_depth, max_depth)
-        filters, min_depth, max_depth = filters
+        # TODO: handle more than one filter
+        filters, min_depth, max_depth = filters[0]
 
         path_join, attr_join = (None, None)
 
-        if relation == "children":
+        if relation == "parents":
             path_join = Path.child_id == Node.id
-            attr_join = Attribute.dbnode_id = Path.parent_id
-        elif relation == "parents":
+            attr_join = Attribute.dbnode_id == Path.parent_id
+        elif relation == "children":
             path_join = Path.parent_id == Node.id
-            attr_join = Attribute.dbnode_id = Path.child_id
+            attr_join = Attribute.dbnode_id == Path.child_id
         else:
             raise ValueError('Relation has to be either "children" or "parents"'
                              + 'but it was {}.'.format(relation))
 
         filter = Node.query(Node.id).join(Path, path_join)
-        if min_depth:
+        if min_depth is not None:
             filter = filter.filter(Path.depth >= min_depth)
-        if max_depth:
+        if max_depth is not None:
             filter = filter.filter(Path.depth <= max_depth)
 
-        filter = filter.join(Attribute, attr_join).filter(*filters).subquery()
+        filter = filter.join(Attribute, attr_join).filter(filters).subquery()
 
         return filter
 
@@ -308,18 +309,37 @@ class QueryBuilder(object):
     def prefetch_attr(self, *args, **kwargs):
         raise NotImplementedError("prefetch_attr is not implemented yet.")
 
-    def filter_relation(self, relation, query, rename=None, prefetch=False):
+    def filter_relation(self, relation, query, rename=None, prefetch=False,
+                        min_depth=None, max_depth=None):
         # TODO: proper error message.
-        _table = self.alias[relation]
-        _filters = None
-        if relation == "input":
-            _filters = self.input_filters
-        elif relation == "output":
-            _filters = self.output_filters
+        if relation in ("input", "output"):
+            _table = self.alias[relation]
+            _filters = None
+            if relation == "input":
+                _filters = self.input_filters
+            elif relation == "output":
+                _filters = self.output_filters
+
+            stmt = _table.id.in_(query.with_entities(Node.id))
+            _filters.append(stmt)
+        elif relation in ("children", "parents"):
+            _filters = None
+            if relation == "children":
+                _filters = self.children_attr_filters
+            elif relation == "parents":
+                _filters = self.parents_attr_filters
+
+            # By using this, we don't have to maintain an alias of Path for
+            # each relation.
+            stmt = Attribute.dbnode_id.in_(query.with_entities(Node.id))
+            _filters.append((stmt, min_depth, max_depth))
+
+        else:
+            raise ValueError("The relation argument needs to be either 'input'," +
+                             "'output', 'children' or 'parents', but was " +
+                             "{}".format(relation))
 
 
-        stmt = _table.id.in_(subquery.with_entities(Node.id))
-        _filters.append(stmt)
 
     # TODO: replace extra to use the table arg
     def _attr_filter_stmt(self, _filter, extra=False):
