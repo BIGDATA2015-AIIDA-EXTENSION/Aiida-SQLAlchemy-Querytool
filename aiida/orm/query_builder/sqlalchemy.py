@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
 
 __all__ = ['QueryBuilder']
 
 
 from aiida.djsite.db.models import DbNode, DbAttribute, DbUser, DbExtra, \
     DbGroup, DbPath
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_
 from sqlalchemy.orm.query import aliased
 from functools import partial
 
@@ -91,8 +92,7 @@ class QueryBuilder(object):
 
     def _build_depth_filter(self, relation,  filters):
         # Unpack (filters, min_depth, max_depth)
-        # TODO: handle more than one filter
-        filters, min_depth, max_depth = filters[0]
+        filters, min_depth, max_depth = filters
 
         path_join, attr_join = (None, None)
 
@@ -109,7 +109,7 @@ class QueryBuilder(object):
         filter = Node.query(Node.id).join(Path, path_join)
         if min_depth is not None:
             filter = filter.filter(Path.depth >= min_depth)
-        if max_depth is not None:
+        if max_depth:
             filter = filter.filter(Path.depth <= max_depth)
 
         filter = filter.join(Attribute, attr_join).filter(filters).subquery()
@@ -196,12 +196,18 @@ class QueryBuilder(object):
             q = q.filter(stmt)
 
         if len(self.children_attr_filters) > 0:
-            stmt = self._build_depth_filter("children", self.children_attr_filters)
-            q = q.filter(Node.id.in_(stmt))
+            stmt = and_(
+                *map(lambda f: Node.id.in_(self._build_depth_filter("children", f)),
+                    self.children_attr_filters)
+            )
+            q = q.filter(stmt)
 
         if len(self.parents_attr_filters) > 0:
-            stmt = self._build_depth_filter("parents", self.parents_attr_filters)
-            q = q.filter(Node.id.in_(stmt))
+            stmt = and_(
+                *map(lambda f: Node.id.in_(self._build_depth_filter("parents", f)),
+                    self.parents_attr_filters)
+            )
+            q = q.filter(stmt)
 
         # Prefetch using a left outer join. If an attribute doesn't exist, then
         # ¯\_(ツ)_/¯

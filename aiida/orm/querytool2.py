@@ -7,7 +7,7 @@ from uuid import UUID
 from itertools import starmap
 
 from .utils import check_args, Attribute
-from .query_builder.sqlalch import QueryBuilder as SQLAlchemyQB
+from .query_builder.sqlalchemy import QueryBuilder as SQLAlchemyQB
 
 
 # TODO: EVERYTHING.
