@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 script="query.py"
-command="python query.py"
+command="python $script"
 
 function create_command() {
     version="$1"
