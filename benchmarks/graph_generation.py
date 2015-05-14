@@ -57,9 +57,9 @@ def get_random_ids(n):
     """
     max_ = Node.objects.aggregate(Max('id'))['id__max']
     ids = random.sample(xrange(max_), n)
-    return ids
+    nodes = Node.objects.filter(id__in=ids).only("id")
+    return map(lambda n: n.id, nodes)
     # No need to query the node: just return the ids.
-    # nodes = Node.objects.filter(id__in(ids))
 
 
 def create_node(inputs=None):
