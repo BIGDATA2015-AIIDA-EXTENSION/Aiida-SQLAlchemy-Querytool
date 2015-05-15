@@ -19,17 +19,17 @@ from aiida.orm.node import Node
 def query_old_1():
     qt = QueryTool_old()
     qt.set_class(Node)
-    qt.add_attr_filter("ELECTRONS.mixing_beta", ">", 0.)
-    qt.add_attr_filter("CONTROL.max_seconds", ">", 0)
+    qt.add_attr_filter("energy", ">", 0.)
+    qt.add_attr_filter("number_of_atoms", ">", 2)
     return qt.run_query
 
 def query_old_2():
     qt = QueryTool_old()
     qt.set_class(Node)
-    qt.add_attr_filter("ELECTRONS.mixing_beta", ">", 0.)
-    qt.add_attr_filter("CONTROL.max_seconds", ">", 0)
-    qt.with_attr("ELECTRONS.mixing_beta")
-    qt.with_attr("CONTROL.max_seconds")
+    qt.add_attr_filter("energy", ">", 0.)
+    qt.add_attr_filter("number_of_atoms", ">", 2)
+    qt.with_attr("energy")
+    qt.with_attr("number_of_atoms")
     return qt.run_prefetch_query
 
 def query_old_3():
@@ -47,14 +47,14 @@ def query_old_4():
 
 def query_new_1():
     qt = QueryTool(Node)
-    qt.filter_attr("ELECTRONS.mixing_beta", ">", 0.)
-    qt.filter_attr("CONTROL.max_seconds", ">", 0)
+    qt.filter_attr("energy", ">", 0.)
+    qt.filter_attr("number_of_atoms", ">", 2)
     return qt.run_query
 
 def query_new_2():
     qt = QueryTool(Node)
-    qt.filter_attr("ELECTRONS.mixing_beta", ">", 0., prefetch=True)
-    qt.filter_attr("CONTROL.max_seconds", ">", 0, prefetch=True)
+    qt.filter_attr("energy", ">", 0., prefetch=True)
+    qt.filter_attr("number_of_atoms", ">", 2, prefetch=True)
     return qt.run_query
 
 def query_new_3():
