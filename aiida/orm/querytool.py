@@ -136,8 +136,9 @@ class QueryTool(object):
                         dbattributes__in=attr_qobj, **classinfo)
                     res = res.filter(**{
                         "{}{}__in".format(relationlink, reldata['relation']):
-                            linkedres,
-                        "{}__label".format(relationlink): reldata['linkname']})
+                            linkedres
+                        # , "{}__label".format(relationlink): reldata['linkname']
+                    })
 
                     # if prefetch:
                     #     res = self._prefetch(res, reldata["attrname"], reldata["relname"])
@@ -166,8 +167,9 @@ class QueryTool(object):
                         dbextras__in=extra_qobj)
                     res = res.filter(**{
                         "{}{}__in".format(relationlink, reldata['relation']):
-                            linkedres,
-                        "{}__label".format(relationlink): reldata['linkname']})
+                            linkedres
+                        # , "{}__label".format(relationlink): reldata['linkname']
+                    })
 
                     if prefetch:
                         res = self._prefetch(res, reldata["attrname"],
@@ -618,13 +620,13 @@ class QueryTool(object):
                 reldata['nodeclass'] = relnodeclass._query_type_string
             if relnode == 'res':
                 reldata['relation'] = "__output"
-                reldata['linkname'] = "output_parameters"
+                # reldata['linkname'] = "output_parameters"
             elif relnode.startswith('out.'):
                 reldata['relation'] = "__output"
-                reldata['linkname'] = relnode[4:]
+                # reldata['linkname'] = relnode[4:]
             elif relnode.startswith('inp.'):
                 reldata['relation'] = "__input"
-                reldata['linkname'] = relnode[4:]
+                # reldata['linkname'] = relnode[4:]
             else:
                 raise NotImplementedError("Implemented only for 'out.' and 'inp.' for the time being!")
             reldata['attrname'] = key

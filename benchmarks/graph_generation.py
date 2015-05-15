@@ -171,7 +171,7 @@ if __name__ == '__main__':
                     inputs_number = random.randint(1, 3)
                     inputs = random.sample(nodes, inputs_number)
                     nodes.append(create_node(inputs))
-                for _ in range(30):
+                for _ in range(25):
                     p = random.uniform(0, 1)
                     # This gives us a 50% chances to go up to 10 nodes.
                     if p > 0.98:
@@ -188,7 +188,7 @@ if __name__ == '__main__':
                 input_sets = get_random_ids(50)
                 for _ in range(20):
                     p = random.uniform(0,1)
-                    if p > 0.93:
+                    if p > 0.95:
                         break
                     inputs_number = random.randint(2, 4)
                     inputs = random.sample(input_sets, inputs_number)
