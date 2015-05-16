@@ -236,7 +236,7 @@ class QueryBuilder(object):
             )
             q = q.filter(stmt)
 
-        return q
+        return q.distinct()
 
     def get_query(self):
         return self._build_query()

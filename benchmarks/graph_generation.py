@@ -158,39 +158,39 @@ if __name__ == '__main__':
     print("Begin.")
     while nodes_number < TOTAL_TO_CREATE:
         with transaction.commit_on_success():
-            create_components = random.uniform(0,1) > 0.2
+            create_components = random.uniform(0,1) > 0.1
             nodes = []
             if create_components:
                 print("New components.")
-                inputs_number = random.randint(3, 4)
+                inputs_number = random.randint(2, 3)
                 inputs = [create_node() for _ in range(inputs_number)]
                 nodes += inputs
                 node = create_node(inputs)
                 # We create 7 initials nodes, then randomly append stuff to it.
-                for _ in range(6):
-                    inputs_number = random.randint(1, 3)
+                for _ in range(3):
+                    inputs_number = random.randint(1, 2)
                     inputs = random.sample(nodes, inputs_number)
                     nodes.append(create_node(inputs))
-                for _ in range(25):
+                for _ in range(10):
                     p = random.uniform(0, 1)
                     # This gives us a 50% chances to go up to 10 nodes.
-                    if p > 0.98:
+                    if p > 0.95:
                         break
-                    inputs_number = random.randint(2, 4)
+                    inputs_number = random.randint(1, 2)
                     # We use [-6:] to select the input in the last 6.
                     # The goal is to great a bigger depth
-                    inputs = random.sample(nodes[-6:], inputs_number)
+                    inputs = random.sample(nodes[-4:], inputs_number)
                     nodes.append(create_node(inputs))
 
             # Extending already existing components.
             else:
                 print("Extending components.")
                 input_sets = get_random_ids(50)
-                for _ in range(20):
+                for _ in range(5):
                     p = random.uniform(0,1)
-                    if p > 0.95:
+                    if p > 0.92:
                         break
-                    inputs_number = random.randint(2, 4)
+                    inputs_number = random.randint(1, 3)
                     inputs = random.sample(input_sets, inputs_number)
                     nodes.append(create_node(inputs))
 

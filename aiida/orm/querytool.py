@@ -238,11 +238,12 @@ class QueryTool(object):
             extras = self.create_extras_dict()
 
         for r in self._get_query_object():
-            if with_data:
-                yield r.get_aiida_class(), {'attrs': attrs.get(r.pk, {}),
-                                            'extras': extras.get(r.pk, {})}
-            else:
-                yield r.get_aiida_class()
+            # if with_data:
+            #     yield r.get_aiida_class(), {'attrs': attrs.get(r.pk, {}),
+            #                                 'extras': extras.get(r.pk, {})}
+            # else:
+            #     yield r.get_aiida_class()
+            yield r
 
     def run_prefetch_query(self):
         """
@@ -394,7 +395,7 @@ class QueryTool(object):
             else:
                 attr_dict[attr] = _attr
 
-        return (node.get_aiida_class(), attr_dict)
+        return (node, attr_dict)
 
 #This can be useful, but risky
 #.prefetch_related('dbextras').prefetch_related('dbattributes'):
