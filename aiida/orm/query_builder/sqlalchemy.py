@@ -111,7 +111,7 @@ class QueryBuilder(object):
         filter = Node.query(Node.id).join(Path, path_join)
         if min_depth is not None:
             filter = filter.filter(Path.depth >= min_depth)
-        if max_depth:
+        if max_depth is not None:
             filter = filter.filter(Path.depth <= max_depth)
 
         filter = filter.join(Attribute, attr_join).filter(filters).subquery()
@@ -157,7 +157,8 @@ class QueryBuilder(object):
                                              self.input_attr_filters)
             q = q.filter(stmt)
         if len(self.input_filters) > 0:
-            q = q.filter(*self.input_filters)
+            q = q.filter(*map(lambda f: table.input_id.in_(f),
+                              self.input_filters))
 
         if len(self.input_attr_to_prefetch) > 0:
             join, prefetch_keys, prefetch_columns = self._build_prefetch(
@@ -182,7 +183,8 @@ class QueryBuilder(object):
                                              self.output_attr_filters)
             q = q.filter(stmt)
         if len(self.output_filters) > 0:
-            q = q.filter(*self.output_filters)
+            q = q.filter(*map(lambda f: table.output_id.in_(f),
+                              self.output_filters))
 
         if len(self.output_attr_to_prefetch) > 0:
             join, prefetch_keys, prefetch_columns = self._build_prefetch(
@@ -337,20 +339,22 @@ class QueryBuilder(object):
                 _filters = self.output_filters
                 relation = "output_link"
 
-            _table = self.alias[relation]
-
-            stmt = _table.id.in_(query.with_entities(Node.id))
+            stmt = query.with_entities(Node.id).subquery()
             _filters.append(stmt)
         elif relation in ("children", "parents"):
             _filters = None
+            _table = None
             if relation == "children":
                 _filters = self.children_attr_filters
+                _table = Path.child_id
             elif relation == "parents":
                 _filters = self.parents_attr_filters
+                _table = Path.parent_id
 
             # By using this, we don't have to maintain an alias of Path for
             # each relation.
-            stmt = Attribute.dbnode_id.in_(query.with_entities(Node.id))
+            # stmt = Attribute.dbnode_id.in_(query.with_entities(Node.id))
+            stmt = _table.in_(query.with_entities(Node.id))
             _filters.append((stmt, min_depth, max_depth))
 
         else:
