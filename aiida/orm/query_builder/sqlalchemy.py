@@ -42,6 +42,9 @@ column_to_type = {
 #   directly the attribute. In fact, it might be an optimization to focus on
 #   querying attribute, and then joining the node as we want.
 #   * TODO: handle Extra table.
+#   * TODO: factorize _build_input/output_query.
+#   * TODO: there was a regression from commit
+#   5ddf378ddb69af0cd2033eee53ab30a7170e1871 in terms of performances.
 
 
 class QueryBuilder(object):
@@ -85,7 +88,6 @@ class QueryBuilder(object):
         return q.all()
 
     def _build_relation_stmt(self, relation_column, filters):
-
         sub_query = and_(*map(
             lambda a: relation_column.in_(select([Attribute.dbnode_id]).where(a)),
         filters))
@@ -93,6 +95,7 @@ class QueryBuilder(object):
         return sub_query
 
     def _build_depth_filter(self, relation,  filters):
+        # Build the join and filter when filtering the depth
         # Unpack (filters, min_depth, max_depth)
         filters, min_depth, max_depth = filters
 
@@ -153,14 +156,17 @@ class QueryBuilder(object):
         q = q.join(table, Node.input_links)
 
         if len(self.input_attr_filters) > 0:
+            # Build the filter on input attributes.
             stmt = self._build_relation_stmt(table.input_id,
                                              self.input_attr_filters)
             q = q.filter(stmt)
         if len(self.input_filters) > 0:
+            # Build the relation filter.
             q = q.filter(*map(lambda f: table.input_id.in_(f),
                               self.input_filters))
 
         if len(self.input_attr_to_prefetch) > 0:
+            # Build the attr to prefetch.
             join, prefetch_keys, prefetch_columns = self._build_prefetch(
                 self.input_attr_to_prefetch, relation_column=table.input_id)
             q = q.join(join)
@@ -179,14 +185,17 @@ class QueryBuilder(object):
         q = q.join(table, Node.output_links)
 
         if len(self.output_attr_filters) > 0:
+            # Build the filter on input attributes.
             stmt = self._build_relation_stmt(table.output_id,
                                              self.output_attr_filters)
             q = q.filter(stmt)
         if len(self.output_filters) > 0:
+            # Build the relation filter.
             q = q.filter(*map(lambda f: table.output_id.in_(f),
                               self.output_filters))
 
         if len(self.output_attr_to_prefetch) > 0:
+            # Build the attr to prefetch.
             join, prefetch_keys, prefetch_columns = self._build_prefetch(
                 self.output_attr_to_prefetch, relation_column=table.output_id)
             q = q.join(join)
